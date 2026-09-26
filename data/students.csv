@@ -1,11 +1,4 @@
-CandidateNumber,StudentName
-4021,Alex Jones
-4022,Sam Smith
-4023,Taylor Brown
-4024,Jamie Lee
-4025,Morgan White
-4026,Casey Green
-4027,Jordan Hall
-4028,Riley Cooper
-4029,Blake Turner
-4030,Sam Patel
+CentreNumber,CandidateNumber,StudentName,GroupCode
+23162,9001,Example Student One,10F-EXAMPLE
+23162,9002,Example Student Two,10F-EXAMPLE
+23162,9003,Example Student Three,11F-EXAMPLE

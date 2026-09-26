@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+build/
+dist/
+*.spec
+
+# Local application state and generated output
+config/settings.local.json
+generated_cards/
+Manual_Check_Required/
+Reports/
+NEA Sorted*/
+output/
+*.log
+
+# Private / pupil data - never commit
+*.xlsx
+*.xls
+*.xlsm
+NEA_Private_Sample_Pack*
+private_samples/
+sample_photos/
+student_photos/
+pupil_photos/
+Unsorted_Photos/
+Printable_Tags/
+Sample_Class_List.csv
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
