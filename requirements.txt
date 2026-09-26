@@ -1,7 +1,6 @@
-pandas
-openpyxl
-qrcode[pil]
-opencv-python
-pyzbar
-pillow
-psutil
+pandas>=2.2,<3
+openpyxl>=3.1,<4
+qrcode[pil]>=7.4,<9
+pillow>=10.4,<12
+opencv-python-headless>=4.10,<5
+psutil>=6,<8
