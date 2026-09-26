@@ -1,25 +1,18 @@
-import os
+from __future__ import annotations
+
+from pathlib import Path
+
 import psutil
 
 
-def find_camera_sources():
-
-    drives = []
-
-    for partition in psutil.disk_partitions():
-
+def find_camera_sources() -> list[str]:
+    sources: list[str] = []
+    for partition in psutil.disk_partitions(all=False):
         try:
-
-            paths_to_test = [
-                os.path.join(partition.mountpoint, "DCIM")
-            ]
-
-            for test_path in paths_to_test:
-
-                if os.path.exists(test_path):
-                    drives.append(test_path)
-
-        except Exception:
-            pass
-
-    return drives
+            mount = Path(partition.mountpoint)
+            dcim = mount / "DCIM"
+            if dcim.is_dir():
+                sources.append(str(dcim))
+        except (OSError, PermissionError):
+            continue
+    return list(dict.fromkeys(sources))
