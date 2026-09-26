@@ -55,3 +55,7 @@ Excel workbooks may contain additional sheets. The importer scans for sheets con
 - Never erase SD cards until the copied evidence has been checked and backed up or synced according to school policy.
 - Do not guess when a QR code fails. Leave the image in Manual_Check_Required.
 - Test the packaged build on the actual school Windows PC before wider deployment.
+
+## Future development roadmap
+
+The planned Microsoft 365 / Teams / SharePoint / OneDrive and MIS integration work is documented in [docs/FUTURE_DEVELOPMENT_TECHNICAL_ROADMAP.md](docs/FUTURE_DEVELOPMENT_TECHNICAL_ROADMAP.md). It is intended for discussion with the Network Manager before any live-system integration is attempted.
