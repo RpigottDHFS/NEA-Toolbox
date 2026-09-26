@@ -243,8 +243,8 @@ class NEAToolbox:
         out = Path(self.output_folder.get()).resolve()
         for source in self.sources:
             src = Path(source).resolve()
-            if out == src or out in src.parents:
-                messagebox.showerror("Unsafe folder choice", "The output folder cannot be the source folder or a parent of it.")
+            if out == src or src in out.parents:
+                messagebox.showerror("Unsafe folder choice", "The output folder cannot be the source folder or be inside a source folder.")
                 return
         self.cancel_requested = False
         self.cancel_button.configure(state="normal")
