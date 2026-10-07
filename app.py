@@ -18,12 +18,14 @@ from modules.settings_manager import load_settings, save_settings
 class NEAToolbox:
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("NEA Toolbox")
+        self.root.title("NEA Toolbox 1.1")
         self.root.geometry("1040x760")
         self.root.minsize(940, 680)
 
         self.settings = load_settings()
         self.students = []
+        self.roster_path = None
+        self.busy = False
         self.sources: list[str] = []
         self.output_folder = tk.StringVar(value=self.settings.get("last_output_folder", ""))
         self.centre_number = tk.StringVar(value=self.settings.get("centre_number", "23162"))
@@ -34,6 +36,14 @@ class NEAToolbox:
 
         self._configure_style()
         self._build_ui()
+        self.root.protocol("WM_DELETE_WINDOW", self.close_app)
+
+    def close_app(self):
+        if self.busy:
+            self.request_cancel()
+            messagebox.showinfo("Finishing current photo", "Please wait for cancellation to finish, then close the app again.")
+            return
+        self.root.destroy()
 
     def _configure_style(self):
         style = ttk.Style()
@@ -49,7 +59,7 @@ class NEAToolbox:
     def _build_ui(self):
         shell = ttk.Frame(self.root, padding=14)
         shell.pack(fill="both", expand=True)
-        ttk.Label(shell, text="NEA Toolbox", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(shell, text="NEA Toolbox 1.1", style="Title.TLabel").pack(anchor="w")
         ttk.Label(shell, text="Local QR photo sorting for Food NEA evidence • Centre 23162", style="Status.TLabel").pack(anchor="w", pady=(0, 12))
 
         self.tabs = ttk.Notebook(shell)
@@ -111,7 +121,7 @@ class NEAToolbox:
         self.cancel_button.pack(side="left", padx=8)
         self.progress = ttk.Progressbar(self.sort_tab, maximum=100)
         self.progress.pack(fill="x")
-        self.sort_status = ttk.Label(self.sort_tab, text="Ready")
+        self.sort_status = ttk.Label(self.sort_tab, text="Every import reloads Excel and checks a matching QR. Originals are archived; group photos go to all matched students.", wraplength=880)
         self.sort_status.pack(anchor="w", pady=(8, 4))
         self.sort_results = tk.Text(self.sort_tab, height=10, wrap="word", state="disabled")
         self.sort_results.pack(fill="both", expand=True)
@@ -151,6 +161,8 @@ class NEAToolbox:
         widget.configure(state="disabled")
 
     def load_roster(self):
+        if self.busy:
+            return
         path = filedialog.askopenfilename(filetypes=[("Excel / CSV", "*.xlsx *.xlsm *.csv"), ("All files", "*.*")])
         if not path:
             return
@@ -160,6 +172,7 @@ class NEAToolbox:
             messagebox.showerror("Could not load roster", str(exc))
             return
         self.students = result.students
+        self.roster_path = path
         self.settings["last_roster"] = path
         self.settings["centre_number"] = self.centre_number.get().strip() or "23162"
         save_settings(self.settings)
@@ -172,7 +185,7 @@ class NEAToolbox:
         if student_labels:
             self.student_combo.current(0)
         warning_text = "\n".join(f"• {w}" for w in result.warnings) if result.warnings else "No import warnings."
-        self._set_text(self.tag_status, f"Loaded: {Path(path).name}\nStudents: {len(self.students)}\nSheets used: {', '.join(result.sheets_used)}\n\n{warning_text}")
+        self._set_text(self.tag_status, f"Loaded: {Path(path).name}\nStudents: {len(self.students)}\nSheets used: {', '.join(result.sheets_used)}\n\n{warning_text}\n\nDetected columns:\n" + "\n".join(result.column_mappings))
 
     def _selected_students_for_tags(self):
         selected = self.students
@@ -186,6 +199,8 @@ class NEAToolbox:
         return selected
 
     def create_tags(self):
+        if self.busy:
+            return
         if not self.students:
             messagebox.showerror("Roster required", "Load the Excel / CSV roster first.")
             return
@@ -201,12 +216,16 @@ class NEAToolbox:
             messagebox.showerror("Could not create tags", str(exc))
 
     def add_source(self):
+        if self.busy:
+            return
         folder = filedialog.askdirectory(title="Choose a camera / photo folder")
         if folder and folder not in self.sources:
             self.sources.append(folder)
             self.source_list.insert("end", folder)
 
     def find_cameras(self):
+        if self.busy:
+            return
         found = find_camera_sources()
         for folder in found:
             if folder not in self.sources:
@@ -215,10 +234,14 @@ class NEAToolbox:
         messagebox.showinfo("Camera search", f"Found {len(found)} camera / SD-card DCIM folder(s).")
 
     def clear_sources(self):
+        if self.busy:
+            return
         self.sources.clear()
         self.source_list.delete(0, "end")
 
     def choose_output(self):
+        if self.busy:
+            return
         folder = filedialog.askdirectory(title="Choose a local output folder")
         if folder:
             self.output_folder.set(folder)
@@ -231,6 +254,8 @@ class NEAToolbox:
         self.sort_status.configure(text="Cancelling after the current photo…")
 
     def start_sort(self):
+        if self.busy:
+            return
         if not self.students:
             messagebox.showerror("Roster required", "Load the Excel / CSV roster in tab 1 first.")
             return
@@ -246,36 +271,54 @@ class NEAToolbox:
             if out == src or src in out.parents:
                 messagebox.showerror("Unsafe folder choice", "The output folder cannot be the source folder or be inside a source folder.")
                 return
+        self.busy = True
         self.cancel_requested = False
         self.cancel_button.configure(state="normal")
         self.progress["value"] = 0
         self.sort_status.configure(text="Starting…")
-        threading.Thread(target=self._sort_worker, daemon=True).start()
+        args = (list(self.sources), self.output_folder.get(), self.roster_path, self.centre_number.get().strip() or "23162")
+        threading.Thread(target=self._sort_worker, args=args, daemon=True).start()
 
-    def _sort_worker(self):
+    def _sort_worker(self, sources, output, roster_path, centre):
         def progress(done, total, name):
             pct = (done / total * 100) if total else 0
             self.root.after(0, lambda: self._update_progress(pct, done, total, name))
         try:
-            summary = sort_photos(self.sources, self.output_folder.get(), self.students, progress=progress, should_cancel=lambda: self.cancel_requested)
+            result = load_students(roster_path, centre)
+            self.root.after(0, lambda r=result: self._refresh_roster_after_reload(r))
+            summary = sort_photos(sources, output, result.students, progress=progress, should_cancel=lambda: self.cancel_requested)
             self.root.after(0, lambda: self._sort_finished(summary))
         except Exception as exc:
-            self.root.after(0, lambda: self._sort_failed(exc))
+            self.root.after(0, lambda error=exc: self._sort_failed(error))
+
+    def _refresh_roster_after_reload(self, result):
+        self.students = result.students
+        self.roster_label.configure(text=f"{len(result.students)} students - roster reloaded")
+        self.student_combo["values"] = [f"{s.group_code} - {s.student_name} - {s.candidate_number}" for s in result.students]
+        if result.students:
+            self.student_combo.current(0)
+        self.group_combo["values"] = ["All groups"] + result.groups
+        self.group_filter.set("All groups")
+        self._set_text(self.tag_status, "Reloaded current roster before sorting.\n\n" + "\n".join(result.column_mappings + result.warnings))
 
     def _update_progress(self, pct, done, total, name):
         self.progress["value"] = pct
         self.sort_status.configure(text=f"{done}/{total}: {name}")
 
     def _sort_finished(self, summary):
+        self.busy = False
         self.cancel_button.configure(state="disabled")
         status = "Cancelled" if summary.cancelled else "Complete"
         text = (
             f"{status}\n\n"
-            f"Sorted: {summary.sorted}\n"
+            f"Photos newly sorted: {summary.sorted}\n"
+            f"New student-folder copies: {summary.student_copies}\n"
+            f"Originals archived: {summary.originals_copied} (already archived: {summary.originals_already_copied})\n"
             f"Manual review: {summary.review}\n"
             f"Already copied: {summary.already_copied}\n"
             f"Errors: {summary.errors}\n\n"
-            f"Report: {summary.report_csv}"
+            f"Roster matched using: {summary.matched_example or 'cancelled before match'}\n"
+            f"Report: {summary.report_csv or 'No files processed'}"
         )
         self._set_text(self.sort_results, text)
         self.sort_status.configure(text=status)
@@ -283,6 +326,7 @@ class NEAToolbox:
         messagebox.showinfo("Photo sort", text)
 
     def _sort_failed(self, exc):
+        self.busy = False
         self.cancel_button.configure(state="disabled")
         self.sort_status.configure(text="Failed")
         messagebox.showerror("Photo sort failed", str(exc))
@@ -327,6 +371,8 @@ class NEAToolbox:
             messagebox.showinfo("Exception folder", str(folder))
 
     def assign_photo(self):
+        if self.busy:
+            return
         selection = self.review_list.curselection()
         student_index = self.student_combo.current()
         if not selection or student_index < 0 or student_index >= len(self.students):

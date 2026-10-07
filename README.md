@@ -1,6 +1,6 @@
-# NEA Toolbox
+# NEA Toolbox 1.1
 
-NEA Toolbox is a Windows desktop application for creating pupil QR identification cards and sorting Food NEA practical photographs into local folders.
+NEA Toolbox is a Python desktop application for Windows and macOS for creating pupil QR identification cards and sorting Food NEA practical photographs into local folders.
 
 **Default centre number:** 23162
 
@@ -14,10 +14,10 @@ Current workflow:
 2. Create printable cards showing centre number, candidate name, candidate number and QR code.
 3. Add one or more camera/SD-card folders.
 4. Choose a local output folder.
-5. Sort photographs into Group / Student name - Candidate number.
-6. Send unreadable or ambiguous photographs to Manual_Check_Required.
+5. Reload the latest roster, verify it against the first matching QR found, and sort photographs into Group / Student name - Candidate number.
+6. Copy group photos into every recognised student folder. Unknown/unreadable codes additionally go to Manual_Check_Required.
 7. Review an exception and manually assign it only when the student is known.
-8. Keep CSV audit reports in the local output folder.
+8. Keep all processed original images in All_Original_Images and CSV audit reports in Reports.
 
 The QR payload contains only NEA|centre|candidate_number. The visible card carries the student's name for human checking.
 
@@ -41,7 +41,7 @@ For school deployment, prefer the packaged Windows build from GitHub Actions aft
 
 ## Windows build
 
-The Build Windows app GitHub Action builds on a Windows runner with Python 3.12 and PyInstaller. A successful run produces an artifact named NEA-Toolbox-Windows. Extract the whole artifact and keep _internal next to NEA-Toolbox.exe.
+The Build Windows app GitHub Action builds on a Windows runner with Python 3.12 and PyInstaller. A successful run produces an artifact named NEA-Toolbox-1.1-Windows. Extract the whole artifact and keep _internal next to NEA-Toolbox.exe.
 
 ## Simple CSV format
 
@@ -59,3 +59,9 @@ Excel workbooks may contain additional sheets. The importer scans for sheets con
 ## Future development roadmap
 
 The planned Microsoft 365 / Teams / SharePoint / OneDrive and MIS integration work is documented in [docs/FUTURE_DEVELOPMENT_TECHNICAL_ROADMAP.md](docs/FUTURE_DEVELOPMENT_TECHNICAL_ROADMAP.md). It is intended for discussion with the Network Manager before any live-system integration is attempted.
+
+## Version 1.1
+
+See [the version 1.1 guide](docs/VERSION_1_1.md) for group photographs, the originals archive, automatic roster checks and test instructions.
+
+On a Mac with Python installed, run `python3 -m venv .venv`, then `.venv/bin/python -m pip install -r requirements.txt`, then `.venv/bin/python app.py` from the extracted project folder. Use Browse to choose photo folders.
