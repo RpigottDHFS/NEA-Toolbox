@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -10,7 +12,7 @@ from PIL import Image, ImageTk
 
 from modules.drive_detector import find_camera_sources
 from modules.excel_loader import load_students
-from modules.photo_sorter import assign_review_photo, sort_photos
+from modules.photo_sorter import SUPPORTED_EXTENSIONS, assign_review_photo, sort_photos
 from modules.qr_generator import generate_qr_cards
 from modules.settings_manager import load_settings, save_settings
 
@@ -18,7 +20,7 @@ from modules.settings_manager import load_settings, save_settings
 class NEAToolbox:
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("NEA Toolbox 1.1")
+        self.root.title("NEA Toolbox 1.1.1")
         self.root.geometry("1040x760")
         self.root.minsize(940, 680)
 
@@ -41,7 +43,7 @@ class NEAToolbox:
     def close_app(self):
         if self.busy:
             self.request_cancel()
-            messagebox.showinfo("Finishing current photo", "Please wait for cancellation to finish, then close the app again.")
+            messagebox.showinfo("Finishing current file", "Please wait for cancellation to finish, then close the app again.")
             return
         self.root.destroy()
 
@@ -59,8 +61,8 @@ class NEAToolbox:
     def _build_ui(self):
         shell = ttk.Frame(self.root, padding=14)
         shell.pack(fill="both", expand=True)
-        ttk.Label(shell, text="NEA Toolbox 1.1", style="Title.TLabel").pack(anchor="w")
-        ttk.Label(shell, text="Local QR photo sorting for Food NEA evidence • Centre 23162", style="Status.TLabel").pack(anchor="w", pady=(0, 12))
+        ttk.Label(shell, text="NEA Toolbox 1.1.1", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(shell, text="Local QR photo and PDF sorting for Food NEA evidence • Centre 23162", style="Status.TLabel").pack(anchor="w", pady=(0, 12))
 
         self.tabs = ttk.Notebook(shell)
         self.tabs.pack(fill="both", expand=True)
@@ -68,7 +70,7 @@ class NEAToolbox:
         self.sort_tab = ttk.Frame(self.tabs, padding=16)
         self.review_tab = ttk.Frame(self.tabs, padding=16)
         self.tabs.add(self.tag_tab, text="1. Create printable QR tags")
-        self.tabs.add(self.sort_tab, text="2. Sort student photos")
+        self.tabs.add(self.sort_tab, text="2. Sort photos and PDFs")
         self.tabs.add(self.review_tab, text="3. Review exceptions")
 
         self._build_tag_tab()
@@ -99,7 +101,7 @@ class NEAToolbox:
         self.tag_status.pack(fill="both", expand=True)
 
     def _build_sort_tab(self):
-        ttk.Label(self.sort_tab, text="Choose photo sources", style="Heading.TLabel").pack(anchor="w")
+        ttk.Label(self.sort_tab, text="Choose photo / PDF source folders (all subfolders are searched)", style="Heading.TLabel").pack(anchor="w")
         source_buttons = ttk.Frame(self.sort_tab)
         source_buttons.pack(fill="x", pady=(8, 6))
         ttk.Button(source_buttons, text="Add source folder", command=self.add_source).pack(side="left")
@@ -116,7 +118,7 @@ class NEAToolbox:
 
         action = ttk.Frame(self.sort_tab)
         action.pack(fill="x", pady=18)
-        ttk.Button(action, text="Run automated photo sort", command=self.start_sort, style="Primary.TButton").pack(side="left")
+        ttk.Button(action, text="Run automated file sort", command=self.start_sort, style="Primary.TButton").pack(side="left")
         self.cancel_button = ttk.Button(action, text="Cancel", command=self.request_cancel, state="disabled")
         self.cancel_button.pack(side="left", padx=8)
         self.progress = ttk.Progressbar(self.sort_tab, maximum=100)
@@ -128,10 +130,11 @@ class NEAToolbox:
 
     def _build_review_tab(self):
         ttk.Label(self.review_tab, text="Manual review", style="Heading.TLabel").pack(anchor="w")
-        ttk.Label(self.review_tab, text="Choose the correct student only when you can identify the photo confidently.").pack(anchor="w", pady=(3, 10))
+        ttk.Label(self.review_tab, text="Choose the correct student only when you can identify the file confidently.").pack(anchor="w", pady=(3, 10))
         row = ttk.Frame(self.review_tab)
         row.pack(fill="x")
         ttk.Button(row, text="Refresh exception list", command=self.refresh_review).pack(side="left")
+        ttk.Button(row, text="Open selected file", command=self.open_review_file).pack(side="left", padx=8)
         ttk.Button(row, text="Open exception folder", command=self.open_review_folder).pack(side="left", padx=8)
 
         body = ttk.Panedwindow(self.review_tab, orient="horizontal")
@@ -152,7 +155,7 @@ class NEAToolbox:
         self.review_student = tk.StringVar()
         self.student_combo = ttk.Combobox(assign, textvariable=self.review_student, state="readonly", width=48)
         self.student_combo.pack(side="left", padx=8, fill="x", expand=True)
-        ttk.Button(assign, text="Assign photo to selected student", command=self.assign_photo, style="Primary.TButton").pack(side="left")
+        ttk.Button(assign, text="Assign file to selected student", command=self.assign_photo, style="Primary.TButton").pack(side="left")
 
     def _set_text(self, widget: tk.Text, text: str):
         widget.configure(state="normal")
@@ -218,7 +221,7 @@ class NEAToolbox:
     def add_source(self):
         if self.busy:
             return
-        folder = filedialog.askdirectory(title="Choose a camera / photo folder")
+        folder = filedialog.askdirectory(title="Choose a camera, photo or PDF folder")
         if folder and folder not in self.sources:
             self.sources.append(folder)
             self.source_list.insert("end", folder)
@@ -251,7 +254,7 @@ class NEAToolbox:
 
     def request_cancel(self):
         self.cancel_requested = True
-        self.sort_status.configure(text="Cancelling after the current photo…")
+        self.sort_status.configure(text="Cancelling after the current file…")
 
     def start_sort(self):
         if self.busy:
@@ -260,7 +263,7 @@ class NEAToolbox:
             messagebox.showerror("Roster required", "Load the Excel / CSV roster in tab 1 first.")
             return
         if not self.sources:
-            messagebox.showerror("Photo source required", "Add at least one source folder or find an SD card.")
+            messagebox.showerror("Source folder required", "Add at least one source folder or find an SD card.")
             return
         if not self.output_folder.get().strip():
             messagebox.showerror("Output required", "Choose a local output folder.")
@@ -311,7 +314,7 @@ class NEAToolbox:
         status = "Cancelled" if summary.cancelled else "Complete"
         text = (
             f"{status}\n\n"
-            f"Photos newly sorted: {summary.sorted}\n"
+            f"Files newly sorted: {summary.sorted}\n"
             f"New student-folder copies: {summary.student_copies}\n"
             f"Originals archived: {summary.originals_copied} (already archived: {summary.originals_already_copied})\n"
             f"Manual review: {summary.review}\n"
@@ -323,19 +326,19 @@ class NEAToolbox:
         self._set_text(self.sort_results, text)
         self.sort_status.configure(text=status)
         self.refresh_review()
-        messagebox.showinfo("Photo sort", text)
+        messagebox.showinfo("File sort", text)
 
     def _sort_failed(self, exc):
         self.busy = False
         self.cancel_button.configure(state="disabled")
         self.sort_status.configure(text="Failed")
-        messagebox.showerror("Photo sort failed", str(exc))
+        messagebox.showerror("File sort failed", str(exc))
 
     def _review_files(self):
         folder = Path(self.output_folder.get()) / "Manual_Check_Required"
         if not folder.exists():
             return []
-        return sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"})
+        return sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS)
 
     def refresh_review(self):
         self.review_list.delete(0, "end")
@@ -343,6 +346,8 @@ class NEAToolbox:
             self.review_list.insert("end", path.name)
 
     def show_review_preview(self, _event=None):
+        if self.busy:
+            return
         selection = self.review_list.curselection()
         if not selection:
             return
@@ -350,25 +355,42 @@ class NEAToolbox:
         if selection[0] >= len(files):
             return
         try:
-            image = Image.open(files[selection[0]])
+            path = files[selection[0]]
+            caption = ""
+            if path.suffix.lower() == ".pdf":
+                from modules.pdf_reader import preview_pdf
+                image, count = preview_pdf(path)
+                caption = f"PDF: first of {count} page(s). Open selected file to inspect all pages."
+            else:
+                with Image.open(path) as original:
+                    image = original.convert("RGB")
             image.thumbnail((600, 430), Image.Resampling.LANCZOS)
             self.preview_photo = ImageTk.PhotoImage(image)
-            self.preview_label.configure(image=self.preview_photo)
+            self.preview_label.configure(image=self.preview_photo, text=caption, compound="top")
         except Exception:
             self.preview_label.configure(text="Preview unavailable", image="")
+
+    def _open_file(self, path):
+        try:
+            if os.name == "nt":
+                os.startfile(path)
+            elif os.uname().sysname == "Darwin":
+                subprocess.Popen(["open", str(path)])
+            else:
+                subprocess.Popen(["xdg-open", str(path)])
+        except Exception as exc:
+            messagebox.showerror("Could not open file", str(exc))
+
+    def open_review_file(self):
+        selected = self.review_list.curselection()
+        files = self._review_files()
+        if selected and selected[0] < len(files):
+            self._open_file(files[selected[0]])
 
     def open_review_folder(self):
         folder = Path(self.output_folder.get()) / "Manual_Check_Required"
         folder.mkdir(parents=True, exist_ok=True)
-        try:
-            if os.name == "nt":
-                os.startfile(folder)  # type: ignore[attr-defined]
-            elif os.uname().sysname == "Darwin":
-                os.system(f'open "{folder}"')
-            else:
-                os.system(f'xdg-open "{folder}"')
-        except Exception:
-            messagebox.showinfo("Exception folder", str(folder))
+        self._open_file(folder)
 
     def assign_photo(self):
         if self.busy:
@@ -376,19 +398,32 @@ class NEAToolbox:
         selection = self.review_list.curselection()
         student_index = self.student_combo.current()
         if not selection or student_index < 0 or student_index >= len(self.students):
-            messagebox.showerror("Selection required", "Choose an exception photo and the correct student.")
+            messagebox.showerror("Selection required", "Choose an exception file and the correct student.")
             return
         files = self._review_files()
         if selection[0] >= len(files):
             return
         student = self.students[student_index]
-        if not messagebox.askyesno("Confirm assignment", f"Assign this photo to {student.student_name} ({student.candidate_number})?\n\nA review copy will be retained."):
+        if not messagebox.askyesno("Confirm assignment", f"Assign this entire file to {student.student_name} ({student.candidate_number})?\n\nA review copy will be retained."):
             return
         destination = assign_review_photo(files[selection[0]], self.output_folder.get(), student)
         messagebox.showinfo("Assigned", f"Copied to:\n{destination}")
 
 
 def main():
+    if "--self-test-pdf" in sys.argv:
+        try:
+            import tempfile
+            from modules.pdf_reader import preview_pdf
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "engine-test.pdf"
+                Image.new("RGB", (100, 100), "white").save(path, "PDF")
+                image, pages = preview_pdf(path)
+                if pages != 1 or image.width < 1:
+                    raise ValueError("PDF engine self-test failed")
+        except Exception:
+            sys.exit(1)
+        return
     root = tk.Tk()
     NEAToolbox(root)
     root.mainloop()

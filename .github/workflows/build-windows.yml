@@ -46,7 +46,16 @@ jobs:
           --collect-all cv2
           --collect-all qrcode
           --collect-all pandas
+          --collect-all pypdfium2
+          --collect-all pypdfium2_raw
           app.py
+
+      - name: Verify packaged PDF engine
+        timeout-minutes: 2
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath "dist/NEA-Toolbox/NEA-Toolbox.exe" -ArgumentList "--self-test-pdf" -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Packaged PDF engine failed" }
 
       - name: Add read-me to Windows package
         shell: pwsh
@@ -64,7 +73,7 @@ jobs:
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
-          name: NEA-Toolbox-1.1-Windows
+          name: NEA-Toolbox-1.1.1-Windows
           path: dist/NEA-Toolbox/
           if-no-files-found: error
           retention-days: 14

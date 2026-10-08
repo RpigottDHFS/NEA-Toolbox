@@ -4,3 +4,4 @@ qrcode[pil]>=7.4,<9
 pillow>=10.4,<12
 opencv-python-headless>=4.10,<5
 psutil>=6,<8
+pypdfium2>=4.30,<6

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -14,6 +15,8 @@ from .models import Student
 from .utils import file_sha256, safe_component
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp", ".heic", ".heif", ".dng", ".cr2", ".cr3", ".nef", ".arw", ".raf", ".orf", ".rw2"}
+
+SUPPORTED_EXTENSIONS = IMAGE_EXTENSIONS | {".pdf"}
 
 
 @dataclass
@@ -31,10 +34,32 @@ class SortSummary:
 
 
 def _decode_qr(path: Path) -> list[str]:
+    if path.suffix.lower() == ".pdf":
+        return _decode_pdf(path)
     import numpy as np
     image = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
-    if image is None:
-        return []
+    return _decode_image(image) if image is not None else []
+
+
+def _decode_pdf(path: Path) -> list[str]:
+    from .pdf_reader import pdf_document, render_page
+    import numpy as np
+    values = set()
+    try:
+        with pdf_document(path) as document:
+            for index in range(len(document)):
+                try:
+                    image = render_page(document, index)
+                    values.update(_decode_image(cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)))
+                except Exception:
+                    # A damaged page must not silently hide an additional student.
+                    values.add("PDF_PAGE_READ_ERROR")
+    except Exception:
+        values.add("PDF_READ_ERROR")
+    return sorted(values)
+
+
+def _decode_image(image) -> list[str]:
     detector = cv2.QRCodeDetector()
     values = set()
     max_detected = 0
@@ -80,13 +105,19 @@ def _iter_images(source_folders: Iterable[str | Path], output_folder: Path):
         source_path = Path(source).expanduser().resolve()
         if not source_path.exists():
             continue
-        candidates = [source_path] if source_path.is_file() else source_path.rglob("*")
+        def scan_error(error):
+            raise OSError(f"Cannot scan subfolder {error.filename}: {error.strerror}") from error
+        def walk_files():
+            for folder, _dirs, names in os.walk(source_path, followlinks=False, onerror=scan_error):
+                for name in names:
+                    yield Path(folder) / name
+        candidates = [source_path] if source_path.is_file() else walk_files()
         for path in candidates:
             try:
                 resolved = path.resolve()
             except OSError:
                 continue
-            if resolved in seen or not path.is_file() or path.suffix.lower() not in IMAGE_EXTENSIONS:
+            if resolved in seen or not path.is_file() or path.suffix.lower() not in SUPPORTED_EXTENSIONS:
                 continue
             if resolved == output_resolved or output_resolved in resolved.parents:
                 continue
@@ -163,7 +194,7 @@ def sort_photos(source_folders: Iterable[str | Path], output_folder: str | Path,
         raise ValueError("Load a valid student roster before sorting.")
     images = sorted(_iter_images(sources, output), key=lambda p: str(p).casefold())
     if not images:
-        raise ValueError("No supported photos found in the selected sources.")
+        raise ValueError("No supported photos or PDFs found in the selected folders or their subfolders.")
     summary = SortSummary()
     decoded = {}
     # Validate identity before copying. An unreadable/unknown first photo is skipped.
@@ -172,7 +203,7 @@ def sort_photos(source_folders: Iterable[str | Path], output_folder: str | Path,
             summary.cancelled = True
             return summary
         if progress:
-            progress(0, len(images), f"Checking roster: photo {index}/{len(images)} - {source.name}")
+            progress(0, len(images), f"Checking roster: file {index}/{len(images)} - {source.name}")
         try:
             payloads = _decode_qr(source)
         except Exception:
@@ -183,7 +214,7 @@ def sort_photos(source_folders: Iterable[str | Path], output_folder: str | Path,
             summary.matched_example = str(source)
             break
     if not summary.matched_example:
-        raise ValueError("No readable student QR code matches this roster. No photos were copied. "
+        raise ValueError("No readable student QR code matches this roster. No files were copied. "
                          "Check the centre and candidate numbers, load the correct current Excel file, "
                          "and check the headings Name, Candidate number and Group Code. "
                          "Inserted columns are supported; changed candidate numbers require corrected data or new tags.")
@@ -236,6 +267,10 @@ def sort_photos(source_folders: Iterable[str | Path], output_folder: str | Path,
                     summary.sorted += 1
                 if review_needed:
                     detail = "No readable QR code" if not payloads else "One or more QR codes do not match the roster"
+                    if "PDF_READ_ERROR" in payloads:
+                        detail = "PDF could not be opened; it may be damaged or password-protected"
+                    elif "PDF_PAGE_READ_ERROR" in payloads:
+                        detail = "One or more PDF pages could not be scanned; inspect the entire document"
                     row["detail"] = detail
                     try:
                         dest, existed = _copy_idempotent(source, review_folder)

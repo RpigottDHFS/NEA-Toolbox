@@ -1,4 +1,4 @@
-# NEA Toolbox 1.1
+# NEA Toolbox 1.1.1
 
 NEA Toolbox is a Python desktop application for Windows and macOS for creating pupil QR identification cards and sorting Food NEA practical photographs into local folders.
 
@@ -41,7 +41,7 @@ For school deployment, prefer the packaged Windows build from GitHub Actions aft
 
 ## Windows build
 
-The Build Windows app GitHub Action builds on a Windows runner with Python 3.12 and PyInstaller. A successful run produces an artifact named NEA-Toolbox-1.1-Windows. Extract the whole artifact and keep _internal next to NEA-Toolbox.exe.
+The Build Windows app GitHub Action builds on a Windows runner with Python 3.12 and PyInstaller. A successful run produces an artifact named NEA-Toolbox-1.1.1-Windows. Extract the whole artifact and keep _internal next to NEA-Toolbox.exe.
 
 ## Simple CSV format
 
@@ -65,3 +65,5 @@ The planned Microsoft 365 / Teams / SharePoint / OneDrive and MIS integration wo
 See [the version 1.1 guide](docs/VERSION_1_1.md) for group photographs, the originals archive, automatic roster checks and test instructions.
 
 On a Mac with Python installed, run `python3 -m venv .venv`, then `.venv/bin/python -m pip install -r requirements.txt`, then `.venv/bin/python app.py` from the extracted project folder. Use Browse to choose photo folders.
+
+Version 1.1.1 scans photos and every page of PDFs throughout the selected source folder and its subfolders. PDFs are copied whole, not split by page. See the version guide for review and archive behaviour.

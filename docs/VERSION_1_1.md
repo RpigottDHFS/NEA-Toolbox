@@ -48,3 +48,17 @@ Adding columns does not invalidate cards. Changing the actual candidate or centr
 7. Try a roster with no matching candidate numbers: the batch should stop before copying anything.
 
 Direct OneDrive delivery remains a future development. Existing local or synced folder use is unchanged.
+
+## Version 1.1.1: PDFs and subfolders
+
+The source folder you select is searched recursively: include all of its ordinary subfolders, at any depth. You only need to select the top folder. Overlapping source selections are de-duplicated. Symbolic links to folders are not followed. Keep the output separate from the source; the output folder is not rescanned.
+
+PDFs are now included alongside photographs. Every page is rendered locally for QR recognition, including scanned pages and documents whose first page has no code. The whole, unchanged PDF is copied to every recognised student's folder. It is not split into student-specific pages. This means a PDF containing several students' work is copied in full to each matching student's folder; use separate PDFs if that is not wanted.
+
+The originals archive retains its existing name, All_Original_Images, and now also contains the original PDFs. Reports list the PDF file and all destinations. Repeat imports and same-name collision protection apply to PDFs too.
+
+A PDF with an unknown code or an unreadable page is additionally copied for manual review. Damaged or password-protected PDFs are kept for review when the batch has another valid roster match. If no file anywhere in the batch matches the roster, the existing preflight rule stops the batch before any copying.
+
+The review tab shows the first PDF page. Use Open selected file to inspect every page in your usual PDF viewer before manually assigning the whole document. Cancellation takes effect after the current file has finished; a long PDF can take longer than a photo.
+
+When updating a source installation on Mac, run `.venv/bin/python -m pip install -r requirements.txt` in the new project folder so the PDF reader is installed. The Windows download includes it.
